@@ -1,0 +1,38 @@
+services:
+  dhcp-server:
+    image: mydhcp:lab
+    container_name: dhcp-server
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    privileged: true
+    networks:
+      dhcp-lab-net:
+        ipv4_address: 172.28.0.2
+    ports:
+      - "8067:8067"
+    volumes:
+      - ./server.json:/etc/mydhcp/config.json:ro
+    command: ["server", "-config", "/etc/mydhcp/config.json"]
+    restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8067/leases"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+networks:
+  dhcp-lab-net:
+    name: dhcp-lab-net
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/24
+          gateway: 172.28.0.1
+          ip_range: 172.28.0.200/28
