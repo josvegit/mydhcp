@@ -1,0 +1,27 @@
+# compiled binary
+/mydhcp
+/bin/
+
+# test and build artifacts
+*.test
+*.out
+*.prof
+coverage.html
+
+# go workspace (local only)
+go.work
+go.work.sum
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# claude code
+.claude/
