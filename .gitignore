@@ -23,5 +23,8 @@ Thumbs.db
 *.swo
 *~
 
+# local config
+.config/
+
 # claude code
 .claude/
