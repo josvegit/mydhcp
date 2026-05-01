@@ -26,7 +26,7 @@ spawn)
         --privileged \
         --network "$NETWORK" \
         "$IMAGE" \
-        sh -c 'iface=$(ip link | awk -F: "/^[0-9]+: (eth|ens|enp)/{print \$2; exit}" | tr -d " "); \
+        sh -c 'iface=$(ip link | awk -F: "/^[0-9]+: (eth|ens|enp)/{print \$2; exit}" | tr -d " " | cut -d@ -f1); \
                echo "interface: $iface"; \
                udhcpc -i "$iface" -f -v 2>&1 | tee /tmp/dhcp.log; \
                echo "udhcpc exited, sleeping..."; \
