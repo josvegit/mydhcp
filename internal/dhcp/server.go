@@ -124,15 +124,13 @@ func (s *Server) sendReply(reply, req *Packet, conn net.PacketConn) error {
 
 	if req.GIAddr != nil && !req.GIAddr.IsUnspecified() {
 		dst = &net.UDPAddr{IP: req.GIAddr, Port: 67}
-	} else if req.BroadcastRequested() {
+	} else if req.BroadcastRequested() || req.CIAddr == nil || req.CIAddr.IsUnspecified() {
+		// Broadcast when client requested it, or when client has no IP yet.
+		// Unicasting to YIAddr would fail: the client hasn't configured that
+		// address so the kernel cannot ARP-resolve it.
 		dst = &net.UDPAddr{IP: net.IPv4bcast, Port: 68}
 	} else {
-		ip := reply.YIAddr
-		if ip == nil || ip.IsUnspecified() {
-			dst = &net.UDPAddr{IP: net.IPv4bcast, Port: 68}
-		} else {
-			dst = &net.UDPAddr{IP: ip, Port: 68}
-		}
+		dst = &net.UDPAddr{IP: req.CIAddr, Port: 68}
 	}
 
 	_, err := conn.WriteTo(data, dst)
