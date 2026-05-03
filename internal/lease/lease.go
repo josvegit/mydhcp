@@ -38,7 +38,6 @@ func (s State) String() string {
 type Lease struct {
 	IP         net.IP
 	ClientID   string
-	ClientHW   net.HardwareAddr
 	GiAddr     net.IP
 	State      State
 	OfferedAt  time.Time

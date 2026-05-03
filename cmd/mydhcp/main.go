@@ -19,6 +19,7 @@ import (
 	"github.com/josvegit/mydhcp/internal/subnet"
 	"github.com/josvegit/mydhcp/internal/ztp"
 	"github.com/josvegit/mydhcp/plugins/auditlog"
+	"github.com/josvegit/mydhcp/plugins/dashboard"
 )
 
 const version = "0.1.0"
@@ -34,10 +35,12 @@ func main() {
 		runServer(os.Args[2:])
 	case "relay":
 		runRelay(os.Args[2:])
+	case "ui":
+		runUI(os.Args[2:])
 	case "version":
 		fmt.Println(version)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n\nusage: mydhcp [server|relay|version]\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n\nusage: mydhcp [server|relay|ui|version]\n", os.Args[1])
 		os.Exit(1)
 	}
 }
@@ -138,6 +141,127 @@ func runServer(args []string) {
 	}
 
 	// Run DHCP and API concurrently
+	errCh := make(chan error, 2)
+	go func() { errCh <- dhcpSrv.Run(ctx) }()
+	go func() { errCh <- apiSrv.Run(ctx) }()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			slog.Error("server error", "err", err)
+		}
+	case <-ctx.Done():
+		slog.Info("shutting down")
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	pluginReg.Shutdown(shutdownCtx)
+}
+
+func runUI(args []string) {
+	fs := flag.NewFlagSet("ui", flag.ExitOnError)
+	cfgPath  := fs.String("config",     "/etc/mydhcp/config.json", "path to config file")
+	uiListen := fs.String("ui-listen",  "0.0.0.0:8080",            "dashboard listen address")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	setupLogging(cfg.Logging.Level, cfg.Logging.Format)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	subnetMgr := subnet.NewManager()
+	for _, sc := range cfg.Subnets {
+		subnetCfg, err := configToSubnet(sc)
+		if err != nil {
+			slog.Error("invalid subnet config", "name", sc.Name, "err", err)
+			os.Exit(1)
+		}
+		if err := subnetMgr.Add(subnetCfg); err != nil {
+			slog.Error("failed to add subnet", "name", sc.Name, "err", err)
+			os.Exit(1)
+		}
+		slog.Info("subnet loaded", "name", sc.Name, "network", sc.Network)
+	}
+
+	pluginReg := plugin.NewRegistry()
+	for _, pc := range cfg.Plugins {
+		switch pc.Name {
+		case "auditlog":
+			path := pc.Options["path"]
+			if path == "" {
+				path = "/var/log/mydhcp/audit.log"
+			}
+			al, err := auditlog.New(path)
+			if err != nil {
+				slog.Error("failed to init auditlog plugin", "err", err)
+				os.Exit(1)
+			}
+			pluginReg.Register(al)
+			slog.Info("plugin loaded", "name", "auditlog", "path", path)
+		default:
+			slog.Warn("unknown plugin, skipping", "name", pc.Name)
+		}
+	}
+
+	// Dashboard plugin — start HTTP server, then register for events
+	dash := dashboard.New(dashboard.Config{
+		Listen:  *uiListen,
+		Subnets: subnetMgr,
+	})
+	if err := dash.Start(); err != nil {
+		slog.Error("failed to start dashboard", "err", err)
+		os.Exit(1)
+	}
+	pluginReg.Register(dash)
+
+	var ztpMgr *ztp.Manager
+	if cfg.ZTP.Enabled {
+		ztpMgr = ztp.NewManager(subnetMgr)
+		slog.Info("ZTP enabled")
+	}
+
+	serverIP := net.ParseIP(cfg.Server.ServerIP)
+	if serverIP == nil {
+		slog.Error("invalid server_ip", "value", cfg.Server.ServerIP)
+		os.Exit(1)
+	}
+
+	dhcpSrv := dhcp.NewServer(dhcp.ServerConfig{
+		Listen:   cfg.Server.Listen,
+		ServerIP: serverIP.To4(),
+	}, subnetMgr, ztpMgr, pluginReg)
+
+	apiSrv := api.NewServer(cfg.API.Listen, subnetMgr, ztpMgr)
+
+	if cfg.ZTP.Enabled && ztpMgr != nil {
+		go func() {
+			if err := ztp.ServeTFTP(
+				cfg.ZTP.TFTP.Listen,
+				ztpMgr,
+				func(ip net.IP) (net.IPMask, net.IP, bool) {
+					sc, _, ok := subnetMgr.SubnetForIP(ip)
+					if !ok {
+						return nil, nil, false
+					}
+					return sc.Network.Mask, sc.Router, true
+				},
+			); err != nil {
+				slog.Error("tftp error", "err", err)
+			}
+		}()
+	}
+
+	fmt.Printf("\n  mydhcp dashboard → http://%s\n\n", *uiListen)
+
 	errCh := make(chan error, 2)
 	go func() { errCh <- dhcpSrv.Run(ctx) }()
 	go func() { errCh <- apiSrv.Run(ctx) }()

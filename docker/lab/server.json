@@ -14,7 +14,7 @@
   },
   "subnets": [
     {
-      "name": "lab",
+      "name": "172.28.0.0/24",
       "network": "172.28.0.0/24",
       "router": "172.28.0.1",
       "dns": ["8.8.8.8", "8.8.4.4"],
@@ -23,7 +23,7 @@
       "decline_cooldown": "1m",
       "lease_reaper_interval": "15s",
       "range_start": "172.28.0.10",
-      "range_end": "172.28.0.50"
+      "range_end": "172.28.0.99"
     }
   ],
   "logging": {

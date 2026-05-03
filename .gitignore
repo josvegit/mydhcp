@@ -26,5 +26,11 @@ Thumbs.db
 # local config
 .config/
 
+# dashboard UI build artifacts
+plugins/dashboard/ui/node_modules/
+plugins/dashboard/ui/dist/
+# keep the placeholder so `go build` works before npm build
+!plugins/dashboard/ui/dist/index.html
+
 # claude code
 .claude/

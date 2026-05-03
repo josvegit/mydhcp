@@ -1,19 +1,20 @@
 services:
   dhcp-server:
-    image: mydhcp:lab
-    container_name: dhcp-server
+    image: mydhcp:ui-lab
+    container_name: dhcp-ui-server
     build:
       context: ../..
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.ui
     privileged: true
     networks:
       dhcp-lab-net:
         ipv4_address: ${LAB_SERVER_IP}
     ports:
       - "8067:8067"
+      - "8080:8080"
     volumes:
       - ./server.json:/etc/mydhcp/config.json:ro
-    command: ["server", "-config", "/etc/mydhcp/config.json"]
+    command: ["ui", "-config", "/etc/mydhcp/config.json", "-ui-listen", "0.0.0.0:8080"]
     restart: unless-stopped
     logging:
       driver: local
@@ -21,10 +22,10 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8067/leases"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/state"]
       interval: 2s
       timeout: 3s
-      retries: 15
+      retries: 20
 
 networks:
   dhcp-lab-net:

@@ -113,6 +113,17 @@ func (h *Handler) handleDiscover(
 	reply := h.buildReply(pkt, cfg, l.IP, MsgOffer, cfg.LeaseTime)
 	injectZTPOptions(reply, h.serverIP, pkt.CHAddr, profile)
 
+	h.plugins.EmitLeaseEvent(plugin.LeaseEvent{
+		Type:       plugin.EventOffered,
+		IP:         l.IP,
+		ClientID:   clientID,
+		ClientHW:   pkt.CHAddr,
+		GiAddr:     pkt.GIAddr,
+		SubnetName: cfg.Name,
+		SubnetCIDR: cfg.Network.String(),
+		ExpiresAt:  l.ExpiresAt,
+	})
+
 	slog.Info("DHCPOFFER", "subnet", cfg.Name, "client", clientID, "ip", l.IP)
 	return reply
 }
@@ -152,6 +163,9 @@ func (h *Handler) handleRequest(
 		}
 	}
 
+	prev, hadPrev := store.Get(requestedIP)
+	isRenewal := hadPrev && prev.State == lease.StateBound
+
 	l, err := store.Renew(clientID, requestedIP)
 	if err != nil {
 		slog.Warn("REQUEST cannot be honoured", "client", clientID, "ip", requestedIP, "err", err)
@@ -161,8 +175,12 @@ func (h *Handler) handleRequest(
 	reply := h.buildReply(pkt, cfg, l.IP, MsgAck, cfg.LeaseTime)
 	injectZTPOptions(reply, h.serverIP, pkt.CHAddr, profile)
 
+	evType := plugin.EventAssigned
+	if isRenewal {
+		evType = plugin.EventRenewed
+	}
 	h.plugins.EmitLeaseEvent(plugin.LeaseEvent{
-		Type:       plugin.EventAssigned,
+		Type:       evType,
 		IP:         l.IP,
 		ClientID:   clientID,
 		ClientHW:   pkt.CHAddr,

@@ -9,6 +9,7 @@ import (
 type LeaseEventType string
 
 const (
+	EventOffered  LeaseEventType = "offered"
 	EventAssigned LeaseEventType = "assigned"
 	EventRenewed  LeaseEventType = "renewed"
 	EventReleased LeaseEventType = "released"

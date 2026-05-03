@@ -129,9 +129,10 @@ func (h *handlers) listLeases(w http.ResponseWriter, r *http.Request) {
 	type leaseResponse struct {
 		IP         string `json:"ip"`
 		ClientID   string `json:"client_id"`
-		ClientHW   string `json:"client_hw,omitempty"`
 		State      string `json:"state"`
 		SubnetName string `json:"subnet"`
+		OfferedAt  string `json:"offered_at,omitempty"`
+		BoundAt    string `json:"bound_at,omitempty"`
 		ExpiresAt  string `json:"expires_at,omitempty"`
 	}
 
@@ -152,11 +153,14 @@ func (h *handlers) listLeases(w http.ResponseWriter, r *http.Request) {
 				State:      l.State.String(),
 				SubnetName: cfg.Name,
 			}
-			if len(l.ClientHW) > 0 {
-				lr.ClientHW = l.ClientHW.String()
+			if !l.OfferedAt.IsZero() {
+				lr.OfferedAt = l.OfferedAt.UTC().Format(time.RFC3339)
+			}
+			if !l.BoundAt.IsZero() {
+				lr.BoundAt = l.BoundAt.UTC().Format(time.RFC3339)
 			}
 			if !l.ExpiresAt.IsZero() {
-				lr.ExpiresAt = l.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")
+				lr.ExpiresAt = l.ExpiresAt.UTC().Format(time.RFC3339)
 			}
 			results = append(results, lr)
 		}

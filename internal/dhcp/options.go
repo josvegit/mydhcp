@@ -108,7 +108,11 @@ func (o Options) ClientID() string {
 	if !ok || len(v) == 0 {
 		return ""
 	}
-	return string(v)
+	// RFC 2132 §9.14: first byte is type; 0x01 = Ethernet MAC (6 bytes follow).
+	if len(v) == 7 && v[0] == 0x01 {
+		return net.HardwareAddr(v[1:]).String()
+	}
+	return fmt.Sprintf("%x", v)
 }
 
 func (o Options) VendorClass() string {

@@ -191,7 +191,6 @@ func (r *Reaper) sweep(cfg subnet.Config, store lease.Store) {
 			Type:       plugin.EventExpired,
 			IP:         l.IP,
 			ClientID:   l.ClientID,
-			ClientHW:   l.ClientHW,
 			GiAddr:     l.GiAddr,
 			SubnetName: cfg.Name,
 			SubnetCIDR: cfg.Network.String(),

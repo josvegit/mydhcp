@@ -19,9 +19,11 @@ func (r *Registry) Register(p Plugin) {
 
 func (r *Registry) EmitLeaseEvent(event LeaseEvent) {
 	for _, p := range r.plugins {
-		if err := p.OnLeaseEvent(event); err != nil {
-			slog.Error("plugin lease event error", "plugin", p.Name(), "err", err)
-		}
+		go func() {
+			if err := p.OnLeaseEvent(event); err != nil {
+				slog.Error("plugin lease event error", "plugin", p.Name(), "err", err)
+			}
+		}()
 	}
 }
 

@@ -1,21 +1,22 @@
-BINARY    := mydhcp
-GO        := go
-COMPOSE   := docker compose -f docker/lab/docker-compose.yml
-CLIENT_SH := bash docker/lab/client.sh
+GO     := go
+UI_DIR := plugins/dashboard/ui
 
 N ?= 1
 
-.PHONY: build test test-cover lint clean \
-        lab-up lab-down lab-logs lab-leases \
-        lab-client lab-clients lab-kill \
-        lab-scenario
+COMPOSE_UI    := docker compose -f docker/lab/docker-compose.ui.yml
+CLIENT_SH     := bash docker/lab/client.sh
+LAB_JSON      := docker/lab/server.json
 
-## ── Build ──────────────────────────────────────────────────────────────────
+LAB_SUBNET    := $(shell python3 -c "import json; d=json.load(open('$(LAB_JSON)')); print(d['subnets'][0]['network'])")
+LAB_GATEWAY   := $(shell python3 -c "import json; d=json.load(open('$(LAB_JSON)')); print(d['subnets'][0]['router'])")
+LAB_SERVER_IP := $(shell python3 -c "import json; d=json.load(open('$(LAB_JSON)')); print(d['server']['server_ip'])")
 
-build:
-	$(GO) build -o $(BINARY) ./cmd/mydhcp
+export LAB_SUBNET LAB_GATEWAY LAB_SERVER_IP
 
-## ── Tests ──────────────────────────────────────────────────────────────────
+.PHONY: test test-cover ui-install ui-build \
+        lab-up lab-down lab-logs lab-clients lab-kill
+
+## ── Tests ───────────────────────────────────────────────────────────────────
 
 test:
 	$(GO) test ./internal/... -v -race -count=1
@@ -23,73 +24,33 @@ test:
 test-cover:
 	$(GO) test ./internal/... -coverprofile=coverage.out -covermode=atomic
 	$(GO) tool cover -html=coverage.out -o coverage.html
-	@echo "coverage report: coverage.html"
 
-lint:
-	$(GO) vet ./...
+## ── UI build ────────────────────────────────────────────────────────────────
 
-## ── Interactive Lab ─────────────────────────────────────────────────────────
+ui-install:
+	cd $(UI_DIR) && npm install
 
-# Start the DHCP server in the background
+ui-build:
+	cd $(UI_DIR) && npm run build
+
+## ── UI Lab ──────────────────────────────────────────────────────────────────
+
 lab-up:
-	$(COMPOSE) up -d --build
+	$(COMPOSE_UI) up -d --build
 	@echo ""
-	@echo "  Server running.  Management API: http://localhost:8067"
-	@echo "  make lab-logs     – tail server logs"
-	@echo "  make lab-leases   – show current leases"
-	@echo "  make lab-client   – spawn a DHCP client"
-	@echo "  make lab-down     – stop everything"
+	@echo "  Dashboard UI  → http://localhost:8080"
+	@echo "  Management API → http://localhost:8067"
 
-# Stop the server and clean up containers/network
 lab-down:
-	$(COMPOSE) down --remove-orphans
+	$(COMPOSE_UI) down --remove-orphans
 	-$(CLIENT_SH) kill all 2>/dev/null || true
 
-# Follow live server logs (Ctrl-C to stop)
 lab-logs:
-	$(COMPOSE) logs -f dhcp-server
-
-# Pretty-print current leases from the management API
-lab-leases:
-	@curl -sf http://localhost:8067/leases | python3 -m json.tool || \
-	    echo "(server not running — did you run 'make lab-up'?)"
-
-# Spawn a single real udhcpc Alpine client
-lab-client:
-	$(CLIENT_SH) spawn
+	$(COMPOSE_UI) logs -f dhcp-server
 
 # Spawn N clients: make lab-clients N=5
 lab-clients:
 	@for i in $$(seq 1 $(N)); do $(CLIENT_SH) spawn; done
 
-# Kill all client containers (or one by name: make lab-kill NAME=foo)
 lab-kill:
-ifdef NAME
-	$(CLIENT_SH) kill $(NAME)
-else
 	$(CLIENT_SH) kill all
-endif
-
-# Run the Go scenario client inside the lab network.
-#   make lab-scenario SCENARIO=dora
-#   make lab-scenario SCENARIO=flood N=30
-#   make lab-scenario SCENARIO=decline MAC=de:ad:be:ef:00:42
-lab-scenario:
-	$(eval SCENARIO ?= dora)
-	$(eval MAC      ?= )
-	$(eval VENDOR   ?= )
-	$(eval REQIP    ?= )
-	docker run --rm --privileged \
-	    --network dhcp-lab-net \
-	    mydhcp:lab \
-	    dhcpclient \
-	    -scenario "$(SCENARIO)" \
-	    $(if $(MAC),-mac "$(MAC)") \
-	    $(if $(VENDOR),-vendor "$(VENDOR)") \
-	    $(if $(REQIP),-reqip "$(REQIP)") \
-	    $(if $(filter flood,$(SCENARIO)),-flood-count $(N))
-
-## ── Misc ────────────────────────────────────────────────────────────────────
-
-clean:
-	rm -f $(BINARY) coverage.out coverage.html

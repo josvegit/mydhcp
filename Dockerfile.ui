@@ -1,0 +1,23 @@
+# Stage 1: build the React UI
+FROM node:20-alpine AS ui-builder
+WORKDIR /ui
+COPY plugins/dashboard/ui/package*.json ./
+RUN npm ci --silent
+COPY plugins/dashboard/ui/ ./
+RUN npm run build
+
+# Stage 2: build the Go binary (with embedded UI assets)
+FROM golang:latest AS go-builder
+WORKDIR /build
+COPY go.mod ./
+COPY . .
+COPY --from=ui-builder /ui/dist ./plugins/dashboard/ui/dist
+RUN CGO_ENABLED=0 GOOS=linux go build -o /mydhcp ./cmd/mydhcp && \
+    CGO_ENABLED=0 GOOS=linux go build -o /dhcpclient ./cmd/dhcpclient
+
+# Stage 3: minimal runtime
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates wget
+COPY --from=go-builder /mydhcp    /usr/local/bin/mydhcp
+COPY --from=go-builder /dhcpclient /usr/local/bin/dhcpclient
+ENTRYPOINT ["/usr/local/bin/mydhcp"]
